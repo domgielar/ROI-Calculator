@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ROI Analyzer</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #f5f4f1;
+    --surface: #ffffff;
+    --border: rgba(0,0,0,0.1);
+    --text: #1a1a18;
+    --muted: #6b6b68;
+    --hint: #aaa;
+    --green: #0f6e56; --green-bg: #e1f5ee;
+    --amber: #854f0b; --amber-bg: #faeeda;
+    --red: #a32d2d;   --red-bg: #fcebeb;
+    --blue: #185fa5;
+    --r: 10px;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px 16px 80px;
+  }
+
+  /* Header */
+  .header { text-align: center; margin-bottom: 32px; }
+  .header h1 { font-size: 28px; font-weight: 600; letter-spacing: -.5px; }
+  .header p  { color: var(--muted); margin-top: 6px; font-size: 15px; }
+
+  /* Search box */
+  .search-wrap {
+    width: 100%; max-width: 600px;
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: 14px;
+    padding: 6px 6px 6px 18px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    margin-bottom: 12px;
+  }
+  .search-wrap input {
+    flex: 1;
+    border: none;
+    outline: none;
+    font-size: 15px;
+    background: transparent;
+    color: var(--text);
+    min-width: 0;
+  }
+  .search-wrap input::placeholder { color: var(--hint); }
+  .search-wrap select {
+    border: none;
+    outline: none;
+    background: var(--bg);
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 13px;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .search-btn {
+    background: var(--text);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 10px 20px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: opacity .15s;
+    flex-shrink: 0;
+  }
+  .search-btn:hover { opacity: .82; }
+  .search-btn:disabled { opacity: .4; cursor: default; }
+
+  .search-hint { font-size: 12px; color: var(--hint); text-align: center; margin-bottom: 32px; }
+
+  /* Results */
+  .results { width: 100%; max-width: 600px; }
+
+  /* Verdict banner */
+  .verdict {
+    border-radius: var(--r);
+    padding: 20px 22px;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .verdict.strong { background: var(--green-bg); }
+  .verdict.moderate { background: var(--amber-bg); }
+  .verdict.weak { background: var(--red-bg); }
+  .verdict-label { font-size: 13px; font-weight: 500; }
+  .verdict.strong .verdict-label  { color: var(--green); }
+  .verdict.moderate .verdict-label { color: var(--amber); }
+  .verdict.weak .verdict-label    { color: var(--red); }
+  .verdict-address { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .verdict-roi {
+    font-size: 32px;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+  .verdict.strong .verdict-roi  { color: var(--green); }
+  .verdict.moderate .verdict-roi { color: var(--amber); }
+  .verdict.weak .verdict-roi    { color: var(--red); }
+  .verdict-roi-label { font-size: 11px; color: var(--muted); text-align: right; }
+
+  /* Cards */
+  .card {
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: var(--r);
+    padding: 18px 20px;
+    margin-bottom: 12px;
+  }
+  .card-title {
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--muted);
+    margin-bottom: 14px;
+  }
+
+  /* Metric grid */
+  .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .metric { background: var(--bg); border-radius: 8px; padding: 12px 14px; }
+  .metric-label { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+  .metric-value { font-size: 22px; font-weight: 600; }
+  .metric-sub { font-size: 11px; color: var(--hint); margin-top: 2px; }
+  .good { color: var(--green); }
+  .warn { color: var(--amber); }
+  .bad  { color: var(--red);   }
+
+  /* Breakdown rows */
+  .row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 9px 0;
+    border-bottom: 0.5px solid var(--border);
+    font-size: 14px;
+  }
+  .row:last-child { border-bottom: none; }
+  .row .label { color: var(--muted); }
+  .row .val { font-weight: 500; }
+  .row.total { margin-top: 4px; }
+  .row.total .label { color: var(--text); font-weight: 500; }
+  .row.total .val   { font-size: 16px; }
+  .row .explanation {
+    font-size: 11px;
+    color: var(--hint);
+    margin-top: 1px;
+  }
+
+  /* Why section */
+  .why-grid { display: flex; flex-direction: column; gap: 0; }
+  .why-item {
+    display: flex;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 0.5px solid var(--border);
+    font-size: 13px;
+  }
+  .why-item:last-child { border-bottom: none; }
+  .why-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-top: 4px;
+    flex-shrink: 0;
+  }
+  .why-dot.green  { background: var(--green); }
+  .why-dot.amber  { background: var(--amber); }
+  .why-dot.red    { background: var(--red); }
+  .why-text .name { font-weight: 500; }
+  .why-text .desc { color: var(--muted); margin-top: 1px; line-height: 1.5; }
+
+  /* Property info strip */
+  .prop-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .prop-strip span { display: flex; align-items: center; gap: 4px; }
+
+  /* Sources */
+  .sources { font-size: 11px; color: var(--hint); margin-top: 8px; line-height: 1.8; }
+
+  /* Loading */
+  .loading {
+    text-align: center;
+    padding: 48px 0;
+    color: var(--muted);
+    font-size: 15px;
+  }
+  .spinner {
+    width: 32px; height: 32px;
+    border: 2.5px solid var(--border);
+    border-top-color: var(--text);
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+    margin: 0 auto 16px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .error-box {
+    background: var(--red-bg);
+    color: var(--red);
+    border-radius: var(--r);
+    padding: 16px 18px;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>ROI Analyzer</h1>
+  <p>Enter any address to get an estimated return on investment</p>
+</div>
+
+<div class="search-wrap">
+  <input type="text" id="address" placeholder="123 Main St, Boston, MA 02101" />
+  <select id="beds">
+    <option value="">Beds</option>
+    <option value="1">1 bed</option>
+    <option value="2">2 bed</option>
+    <option value="3">3 bed</option>
+    <option value="4">4 bed</option>
+    <option value="5">5 bed</option>
+  </select>
+  <button class="search-btn" id="btn" onclick="analyze()">Analyze</button>
+</div>
+<div class="search-hint">Try: 742 Evergreen Terrace, Springfield, IL &nbsp;·&nbsp; 90210 &nbsp;·&nbsp; 450 Main St, Worcester, MA</div>
+
+<div class="results" id="results"></div>
+
+<script>
+const API = "http://localhost:3001";
+
+document.getElementById("address").addEventListener("keydown", e => {
+  if (e.key === "Enter") analyze();
+});
+
+function fmt(n)   { return "$" + Math.abs(Math.round(n)).toLocaleString(); }
+function pct(n)   { return n.toFixed(1) + "%"; }
+function color(v, lo, hi) { return v >= hi ? "good" : v >= lo ? "warn" : "bad"; }
+
+async function analyze() {
+  const raw = document.getElementById("address").value.trim();
+  const beds = document.getElementById("beds").value;
+  if (!raw) { document.getElementById("address").focus(); return; }
+
+  // Parse address into parts
+  // Accepts: "123 Main St, Boston, MA 02101" or just "02101" or "Boston, MA"
+  const parts = raw.split(",").map(s => s.trim());
+  const params = new URLSearchParams();
+
+  // Check if it's just a zip code
+  if (/^\d{5}$/.test(raw)) {
+    params.append("zipCode", raw);
+  } else {
+    params.append("address", parts[0] || raw);
+    if (parts[1]) params.append("city", parts[1]);
+    if (parts[2]) {
+      // "MA 02101" or just "MA"
+      const stateZip = parts[2].trim().split(" ");
+      params.append("state", stateZip[0]);
+      if (stateZip[1]) params.append("zipCode", stateZip[1]);
+    }
+  }
+  if (beds) params.append("bedrooms", beds);
+
+  const btn = document.getElementById("btn");
+  btn.disabled = true;
+  btn.textContent = "Analyzing...";
+
+  document.getElementById("results").innerHTML = `
+    <div class="loading">
+      <div class="spinner"></div>
+      Fetching rent estimates, market data, and mortgage rates...
+    </div>`;
+
+  try {
+    const res  = await fetch(`${API}/api/analyze?${params}`);
+    const data = await res.json();
+
+    if (data.error) throw new Error(data.error);
+
+    const m  = data.metrics;
+    const b  = data.breakdown.monthly;
+    const i  = data.inputs;
+    const p  = data.property;
+
+    // Verdict labels
+    const verdictText = {
+      strong:   "Strong investment",
+      moderate: "Moderate investment",
+      weak:     "Weak investment",
+    };
+
+    // Why section — explain each key metric
+    const whyItems = [
+      {
+        name: "Cap rate " + pct(m.capRate),
+        color: m.capRate >= 7 ? "green" : m.capRate >= 4 ? "amber" : "red",
+        desc: m.capRate >= 7
+          ? "Above 7% — strong return relative to purchase price, ignoring financing."
+          : m.capRate >= 4
+          ? "Between 4–7% — acceptable but not exceptional. Typical for urban markets."
+          : "Below 4% — low yield. Appreciation would need to carry this investment.",
+      },
+      {
+        name: "Cash-on-cash " + pct(m.cashOnCash),
+        color: m.cashOnCash >= 8 ? "green" : m.cashOnCash >= 4 ? "amber" : "red",
+        desc: m.cashOnCash >= 8
+          ? "Above 8% — your cash invested is generating strong annual returns."
+          : m.cashOnCash >= 4
+          ? "Between 4–8% — moderate cash return on your down payment."
+          : "Below 4% — you're barely making money on your invested cash each year.",
+      },
+      {
+        name: "Monthly cash flow " + (b.cashFlow >= 0 ? "+" : "") + fmt(b.cashFlow),
+        color: b.cashFlow >= 200 ? "green" : b.cashFlow >= 0 ? "amber" : "red",
+        desc: b.cashFlow >= 200
+          ? "Positive cash flow after all expenses and mortgage — cash in your pocket each month."
+          : b.cashFlow >= 0
+          ? "Breaking even or slightly positive. Appreciation and equity build are the play here."
+          : "Negative cash flow — you'd be covering " + fmt(Math.abs(b.cashFlow)) + "/mo out of pocket.",
+      },
+      {
+        name: "Break-even occupancy " + pct(m.breakEvenOccupancy),
+        color: m.breakEvenOccupancy <= 75 ? "green" : m.breakEvenOccupancy <= 90 ? "amber" : "red",
+        desc: m.breakEvenOccupancy <= 75
+          ? "You only need " + pct(m.breakEvenOccupancy) + " occupancy to cover all costs — solid buffer."
+          : m.breakEvenOccupancy <= 90
+          ? "Need " + pct(m.breakEvenOccupancy) + " occupancy to break even — limited vacancy tolerance."
+          : "Need over 90% occupancy to break even — very little room for vacancy.",
+      },
+    ];
+
+    const noData = !i.purchasePrice || !i.monthlyRent;
+
+    document.getElementById("results").innerHTML = noData ? `
+      <div class="error-box">
+        Not enough data was returned for this location. Try adding more address details (city, state, zip),
+        or try a different address. RentCast may not have coverage for this area.
+        ${data.errors?.length ? "<br><br>Details: " + data.errors.join(", ") : ""}
+      </div>` : `
+
+      <div class="verdict ${m.verdict}">
+        <div>
+          <div class="verdict-label">${verdictText[m.verdict]}</div>
+          <div class="verdict-address">${p.address || raw}</div>
+        </div>
+        <div style="text-align:right;">
+          <div class="verdict-roi ${m.verdict}">${pct(m.annualizedROI)}</div>
+          <div class="verdict-roi-label">annualized ROI<br>${i.holdYears || 10}-yr hold</div>
+        </div>
+      </div>
+
+      ${p.bedrooms || p.sqft || p.yearBuilt ? `
+      <div class="card">
+        <div class="prop-strip">
+          ${p.bedrooms  ? `<span>🛏 ${p.bedrooms} bed</span>` : ""}
+          ${p.bathrooms ? `<span>🚿 ${p.bathrooms} bath</span>` : ""}
+          ${p.sqft      ? `<span>📐 ${p.sqft.toLocaleString()} sqft</span>` : ""}
+          ${p.yearBuilt ? `<span>📅 Built ${p.yearBuilt}</span>` : ""}
+          ${p.propertyType ? `<span>🏠 ${p.propertyType}</span>` : ""}
+          ${p.lastSalePrice ? `<span>💰 Last sold ${fmt(p.lastSalePrice)}${p.lastSaleDate ? " (" + p.lastSaleDate.substring(0,7) + ")" : ""}</span>` : ""}
+        </div>
+      </div>` : ""}
+
+      <div class="card">
+        <div class="card-title">Key metrics</div>
+        <div class="metrics">
+          <div class="metric">
+            <div class="metric-label">Monthly cash flow</div>
+            <div class="metric-value ${color(b.cashFlow, 0, 200)}">${b.cashFlow >= 0 ? "+" : "-"}${fmt(b.cashFlow)}</div>
+            <div class="metric-sub">after all expenses</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Cap rate</div>
+            <div class="metric-value ${color(m.capRate, 4, 7)}">${pct(m.capRate)}</div>
+            <div class="metric-sub">target: ≥ 6%</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Cash-on-cash return</div>
+            <div class="metric-value ${color(m.cashOnCash, 4, 8)}">${pct(m.cashOnCash)}</div>
+            <div class="metric-sub">target: ≥ 8%</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Gross rent multiplier</div>
+            <div class="metric-value ${color(20 - m.grossRentMultiplier, 5, 10)}">${m.grossRentMultiplier}×</div>
+            <div class="metric-sub">lower is better</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Monthly breakdown</div>
+        <div class="row"><span class="label">Estimated rent</span><span class="val">${fmt(b.grossRent)}/mo${i.rentRangeLow ? " <small style='color:var(--hint);font-weight:400'>(range ${fmt(i.rentRangeLow)}–${fmt(i.rentRangeHigh)})</small>" : ""}</span></div>
+        <div class="row"><span class="label">Vacancy allowance <span class="explanation">(7% of rent)</span></span><span class="val" style="color:var(--red)">−${fmt(b.vacancyLoss)}</span></div>
+        <div class="row"><span class="label">Mortgage P&amp;I <span class="explanation">(${pct(i.mortgageRate)} rate, 20% down)</span></span><span class="val" style="color:var(--red)">−${fmt(b.mortgage)}</span></div>
+        <div class="row"><span class="label">Property tax <span class="explanation">(est. 1.2%/yr)</span></span><span class="val" style="color:var(--red)">−${fmt(b.propertyTax)}</span></div>
+        <div class="row"><span class="label">Insurance <span class="explanation">(0.5%/yr)</span></span><span class="val" style="color:var(--red)">−${fmt(b.insurance)}</span></div>
+        ${b.hoa > 0 ? `<div class="row"><span class="label">HOA</span><span class="val" style="color:var(--red)">−${fmt(b.hoa)}</span></div>` : ""}
+        <div class="row"><span class="label">Management <span class="explanation">(10% of rent)</span></span><span class="val" style="color:var(--red)">−${fmt(b.management)}</span></div>
+        <div class="row"><span class="label">Maintenance reserve <span class="explanation">(1%/yr)</span></span><span class="val" style="color:var(--red)">−${fmt(b.maintenance)}</span></div>
+        <div class="row"><span class="label">CapEx reserve <span class="explanation">(7% of rent)</span></span><span class="val" style="color:var(--red)">−${fmt(b.capex)}</span></div>
+        <div class="row total"><span class="label">Net cash flow</span><span class="val ${color(b.cashFlow, 0, 200)}">${b.cashFlow >= 0 ? "+" : "−"}${fmt(b.cashFlow)}/mo</span></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Why this rating</div>
+        <div class="why-grid">
+          ${whyItems.map(w => `
+            <div class="why-item">
+              <div class="why-dot ${w.color}"></div>
+              <div class="why-text">
+                <div class="name">${w.name}</div>
+                <div class="desc">${w.desc}</div>
+              </div>
+            </div>`).join("")}
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">10-year projection</div>
+        <div class="row"><span class="label">Total cash invested today</span><span class="val">${fmt(i.totalInvested)}</span></div>
+        <div class="row"><span class="label">Projected property value</span><span class="val">${fmt(m.projectedValue)}</span></div>
+        <div class="row"><span class="label">Net sale proceeds</span><span class="val">${fmt(m.netSaleProceeds)}</span></div>
+        <div class="row"><span class="label">Annualized ROI</span><span class="val ${color(m.annualizedROI, 5, 10)}">${pct(m.annualizedROI)}</span></div>
+        <div class="row total"><span class="label">Total 10-yr ROI</span><span class="val ${color(m.tenYearROI, 50, 120)}">${pct(m.tenYearROI)}</span></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Assumptions used</div>
+        <div class="row"><span class="label">Purchase price</span><span class="val">${fmt(i.purchasePrice)}</span></div>
+        <div class="row"><span class="label">Down payment</span><span class="val">${fmt(i.downPayment)} (20%)</span></div>
+        <div class="row"><span class="label">Mortgage rate</span><span class="val">${pct(i.mortgageRate)} (30-yr fixed)</span></div>
+        <div class="row"><span class="label">Annual appreciation</span><span class="val">${pct(i.appreciation)}</span></div>
+        <div class="sources">
+          Data sources: ${Object.entries(i.dataSources).map(([k,v]) => `${k}: ${v}`).join(" · ")}
+        </div>
+      </div>
+    `;
+
+  } catch(err) {
+    document.getElementById("results").innerHTML = `
+      <div class="error-box">
+        ${err.message.includes("fetch") || err.message.includes("connect")
+          ? "Could not reach the server. Make sure <code>npm start</code> is running in your terminal."
+          : "Error: " + err.message}
+      </div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Analyze";
+  }
+}
+</script>
+</body>
+</html>
